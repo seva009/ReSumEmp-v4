@@ -28,15 +28,6 @@ bool isRegistryKeyExists(const std::wstring& keyPath = L"SOFTWARE\\RSEIDPATH") {
     return false;
 }
 
-//mode it been released in 6.0 or when I have time
-bool BS; //bsod
-bool RMBR; //remove mbr
-bool RW; //rewrite
-bool CKPC; //can kill pc
-bool CURI; //can use remove input
-bool IRK; //install root kit
-//mode
-
 const std::string Codes[3] = {
     "CodeAlpha","CodeBeta","CodeGamma"
 };
